@@ -32,6 +32,7 @@ base_tools = [
 ]
 
 def read(path, offset=None, limit=None):
+    """读取指定文件的某一段内容，并给每行加上行号显示。"""
     try:
         with open(path, 'r') as f:
             lines = f.readlines()
@@ -43,6 +44,7 @@ def read(path, offset=None, limit=None):
         return f"Error: {str(e)}"
 
 def write(path, content):
+    """将内容写入指定文件。"""
     try:
         with open(path, 'w') as f:
             f.write(content)
