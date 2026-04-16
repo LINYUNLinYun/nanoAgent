@@ -7,7 +7,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 from openai import OpenAI
+from dotenv import load_dotenv
 
+
+# 改为读取本地环境变量，免去设置系统环境变量
+load_dotenv()
 client = OpenAI(
     api_key=os.environ.get("OPENAI_API_KEY"),
     base_url=os.environ.get("OPENAI_BASE_URL")
@@ -34,7 +38,8 @@ base_tools = [
 def read(path, offset=None, limit=None):
     """读取指定文件的某一段内容，并给每行加上行号显示。"""
     try:
-        with open(path, 'r') as f:
+        # windows下要加utf8 
+        with open(path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
         start = offset if offset else 0
         end = start + limit if limit else len(lines)
@@ -182,7 +187,7 @@ def load_mcp_tools():
     except:
         return []
 
-def run_agent_step(messages, tools, max_iterations=5):
+def run_agent_step(messages, tools, max_iterations=30):
     global current_plan, plan_mode
     for _ in range(max_iterations):
         response = client.chat.completions.create(
@@ -192,6 +197,7 @@ def run_agent_step(messages, tools, max_iterations=5):
         )
         message = response.choices[0].message
         messages.append(message)
+        # 依旧无工具调用直接结束
         if not message.tool_calls:
             return message.content, messages
         for tool_call in message.tool_calls:
@@ -200,15 +206,19 @@ def run_agent_step(messages, tools, max_iterations=5):
                 continue
             function_name = str(getattr(function_payload, "name", ""))
             raw_arguments = str(getattr(function_payload, "arguments", ""))
+            # 将json字符串解析为字典
             function_args = parse_tool_arguments(raw_arguments)
             print(f"[Tool] {function_name}({function_args})")
             function_impl = available_functions.get(function_name)
+            # 依旧解析错误返回错误的信息--Invalid JSON arguments: ...
             if "_argument_error" in function_args:
                 function_response = f"Error: {function_args['_argument_error']}"
             elif function_name == "plan" and function_impl is not None:
+                # 单独处理plan函数——即使用户不主动打开plan mode，ai也可以调用plan工具来分解任务
                 plan_mode = True
                 function_response = function_impl(**function_args)
                 messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": function_response})
+                # 如果plan函数被正确的执行了 那么curr plan包含了分解的步骤 直接执行就好
                 if current_plan:
                     results = []
                     for i, step in enumerate(current_plan, 1):
@@ -217,10 +227,12 @@ def run_agent_step(messages, tools, max_iterations=5):
                         result, messages = run_agent_step(messages, [t for t in tools if t["function"]["name"] != "plan"])
                         results.append(result)
                         print(f"\n{result}")
+                    # 执行完毕重置plan状态
                     plan_mode = False
                     current_plan = []
                     return "\n".join(results), messages
             elif function_impl is not None:
+                # 非plan函数直接执行即可
                 function_response = function_impl(**function_args)
             else:
                 function_response = f"Error: Unknown tool '{function_name}'"
@@ -230,10 +242,12 @@ def run_agent_step(messages, tools, max_iterations=5):
 def run_agent_claudecode(task, use_plan=False):
     global plan_mode, current_plan
     print("[Init] Loading ClaudeCode features...")
+    # 初始化agent skills mcp tools...
     memory = load_memory()
     rules = load_rules()
     skills = load_skills()
     mcp_tools = load_mcp_tools()
+    # 合并外部工具
     all_tools = base_tools + mcp_tools
     context_parts = ["You are a helpful assistant that can interact with the system. Be concise."]
     if rules:
@@ -268,6 +282,7 @@ def run_agent_claudecode(task, use_plan=False):
     return final_result
 
 if __name__ == "__main__":
+    # 程序入口--命令行解析
     use_plan = "--plan" in sys.argv
     if use_plan:
         sys.argv.remove("--plan")
