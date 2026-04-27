@@ -1,108 +1,55 @@
-# nanoAgent
+﻿# nanoAgent 项目结构说明
+本项目基于NanoAgent二次开发。
+- 拓展1 新增mcp tools——集成minimax mcp client 以文生图为例
+- 拓展2 增加本地tool——get_https 可以读取网页并理解
+- 拓展3 增加本地skill 约束“阅读代码并画图”这个技能的工作边界
 
-[中文](./README_CN.md) | English
 
-> *"The question is not what you look at, but what you see."* — Henry David Thoreau
-
-The simplest way to build an agent that can interact with your system.
-
-A minimal implementation of an AI agent using OpenAI's function calling. The agent can execute bash commands, read files, and write files.
-
-If you want to learn more (e.g. what MCP is, and how to fetch tools in a more modern way), see: https://github.com/sanbuphy/nanoMCP
-
-## install
-
+## 验证方法
 ```bash
-pip install -r requirements.txt
+# 运行测试
+python -m pytest tests/test_agent.py
+
+# 测试基础版
+python agent.py "列出当前目录文件"
+
+# 测试增强版  
+python agent-plus.py "创建test.txt文件"
+
+# 测试ClaudeCode版
+python agent_claudecode.py "搜索所有.py文件"
+
+# 测试get_https工具
+python agent_claudecode.py "告诉我这个网页关于什么：https://github.com/LINYUNLinYun/23-vision-ZhuRonghui" --plan
+
+# 测试文生图工具调用
+python agent_claudecode.py "please draw a picture of a masterpiece with best quality, there is a silhouette of a girl in the center of the picture from the distance, and the girl has silver long hair, school uniform and cherry blossoms background, in soft light and anime style" --plan
+
+# 测试阅读代码并画流程图技能
+python agent_claudecode.py "请阅读该目录下的的agent.py文件，并画一个生动易懂的流程图说明agent的工作原理" --plan
 ```
 
-Set your environment variables:
+## 运行结果
+### get_https工具测试结果：成功获取网页内容并总结出网页主题
+![get_https工具测试结果](pictures/test_get_https.png)
 
-**macOS/Linux:**
-```bash
-export OPENAI_API_KEY='your-key-here'
-export OPENAI_BASE_URL='https://api.openai.com/v1'  # optional
-export OPENAI_MODEL='gpt-4o-mini'  # optional
-```
+### mcp tools 调用测试——文生图工具为例：成功生成符合提示词描述的图片
+![文生图工具测试结果](pictures/test_text_to_image.png)
 
-**Windows (PowerShell):**
-```powershell
-$env:OPENAI_API_KEY='your-key-here'
-$env:OPENAI_BASE_URL='https://api.openai.com/v1'  # optional
-$env:OPENAI_MODEL='gpt-4o-mini'  # optional
-```
 
-**Windows (CMD):**
-```cmd
-set OPENAI_API_KEY=your-key-here
-set OPENAI_BASE_URL=https://api.openai.com/v1
-set OPENAI_MODEL=gpt-4o-mini
-```
+![生成图片示例](pictures/the_gen_girl.png)
 
-## quick start
+### skill测试——阅读代码并画流程图技能为例：成功生成了agent.py的流程图
+![skill测试——阅读代码并画流程图技能为例](pictures/test_code2draw.png)
+![生成流程图示例](pictures/the_gen_pt.jpg)
+  
 
-```bash
-python agent.py "list all python files in current directory"
-python agent.py "create a file called hello.txt with 'Hello World'"
-python agent.py "read the contents of README.md"
-```
+## 📍 关键文件路径
+- [agent.py](agent.py) - 基础版本智能体
+- [agent-plus.py](agent-plus.py) - 增强版本智能体  
+- [agent-claudecode.py](agent-claudecode.py) - ClaudeCode版本智能体
+- [mcp_tool_loader.py](mcp_tool_loader.py) - MCP client 用于支持调用外部工具
+- [tests/test_agent.py](tests/test_agent.py) - 测试套件
+- [README_CN.md](README_CN.md) - 中文文档
+- [requirements.txt](requirements.txt) - 依赖配置
 
-## how it works
-
-The agent uses OpenAI's function calling to:
-1. Receive a task from the user
-2. Decide which tools to use (bash, read_file, write_file)
-3. Execute the tools
-4. Return results to the model
-5. Repeat until task is complete
-
-That's it. ~100 lines of code.
-
-```python
-# Define tools
-tools = [{"type": "function", "function": {...}}]
-
-# Agent loop
-for _ in range(max_iterations):
-    response = client.chat.completions.create(model=model, messages=messages, tools=tools)
-    if not response.choices[0].message.tool_calls:
-        return response.choices[0].message.content
-
-    # Execute tool calls
-    for tool_call in response.choices[0].message.tool_calls:
-        result = available_functions[tool_call.function.name](**args)
-        messages.append({"role": "tool", "content": result})
-```
-
-The core is just a loop: call model → execute tools → repeat.
-
-Recent hardening keeps the loop running even when a tool call contains malformed JSON arguments or references an unknown tool; those cases are returned to the model as explicit tool errors instead of crashing the agent.
-
-## capabilities
-
-- `execute_bash`: Run any bash command
-- `read_file`: Read file contents
-- `write_file`: Write content to files
-
-## examples
-
-```bash
-# System operations
-python agent.py "what's my current directory and what files are in it?"
-
-# File operations
-python agent.py "create a python script that prints hello world"
-
-# Combined tasks
-python agent.py "find all .py files and count total lines of code"
-```
-
----
-
-## license
-
-MIT
-
-────────────────────────────────────────
-
-⏺ *Like a single seed that grows into a forest, one file becomes infinite possibilities.*

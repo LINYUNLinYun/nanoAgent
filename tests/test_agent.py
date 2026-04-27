@@ -235,7 +235,7 @@ class AgentPlusRegressionTests(unittest.TestCase):
 class AgentClaudeCodeRegressionTests(unittest.TestCase):
     def setUp(self):
         self.agent = load_agent_module(
-            "agent-claudecode.py", "nanoagent_agent_claudecode"
+            "agent_claudecode.py", "nanoagent_agent_claudecode"
         )
 
     def test_run_agent_step_returns_unknown_tool_error(self):
@@ -325,6 +325,103 @@ class AgentClaudeCodeRegressionTests(unittest.TestCase):
         ]
         self.assertEqual(len(tool_messages), 1)
         self.assertIn("Invalid JSON arguments", tool_messages[0]["content"])
+
+    def test_merge_tools_keeps_local_tool_on_name_conflict(self):
+        mcp_tool = {
+            "type": "function",
+            "function": {
+                "name": "read",
+                "description": "MCP read",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+
+        merged = self.agent.merge_tools(self.agent.base_tools, [mcp_tool])
+
+        self.assertEqual(
+            [tool["function"]["name"] for tool in merged].count("read"),
+            1,
+        )
+
+    def test_normalize_plan_steps_converts_objects_to_strings(self):
+        steps = self.agent.normalize_plan_steps(
+            [
+                {
+                    "tool": "text_to_image",
+                    "prompt": "Create an architecture diagram",
+                }
+            ]
+        )
+
+        self.assertEqual(
+            steps,
+            ["Use the text_to_image tool for this task: Create an architecture diagram"],
+        )
+
+    def test_build_code_diagram_plan_reads_file_before_image(self):
+        steps = self.agent.build_code_diagram_plan(
+            "阅读该目录下的agent.py文件，并为它的代码结构画一张架构图"
+        )
+
+        self.assertEqual(len(steps), 2)
+        self.assertIn("Read agent.py", steps[0])
+        self.assertIn("Use text_to_image", steps[1])
+
+    def test_run_agent_step_dispatches_registered_mcp_tool(self):
+        captured_messages = []
+
+        def fake_create(*, model, messages, tools):
+            captured_messages.append(messages)
+            if len(captured_messages) == 1:
+                return make_response(
+                    SimpleNamespace(
+                        content="",
+                        tool_calls=[
+                            SimpleNamespace(
+                                id="tc-1",
+                                function=SimpleNamespace(
+                                    name="text_to_image",
+                                    arguments='{"prompt": "robot"}',
+                                ),
+                            )
+                        ],
+                    )
+                )
+            return make_response(SimpleNamespace(content="done", tool_calls=[]))
+
+        class FakeMCPLoader:
+            def call_tool(self, tool_name, arguments, timeout=180):
+                self.called = (tool_name, arguments, timeout)
+                return "image generated"
+
+        fake_loader = FakeMCPLoader()
+        setattr(
+            self.agent,
+            "client",
+            SimpleNamespace(
+                chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create))
+            ),
+        )
+
+        result, _messages = self.agent.run_agent_step(
+            [{"role": "system", "content": "hi"}, {"role": "user", "content": "test"}],
+            self.agent.base_tools,
+            max_iterations=2,
+            mcp_loader=fake_loader,
+            mcp_tool_names={"text_to_image"},
+        )
+
+        self.assertEqual(result, "done")
+        self.assertEqual(
+            fake_loader.called,
+            ("text_to_image", {"prompt": "robot"}, 180),
+        )
+        tool_messages = [
+            m
+            for m in captured_messages[1]
+            if isinstance(m, dict) and m.get("role") == "tool"
+        ]
+        self.assertEqual(tool_messages[0]["content"], "image generated")
 
 
 if __name__ == "__main__":

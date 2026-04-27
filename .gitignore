@@ -1,4 +1,8 @@
 __pycache__/
 *.py[cod]
 *.env
-./agent_memory.md
+agent_memory.md
+output/
+.agent/
+.uv-cache/
+.uv-tools/
